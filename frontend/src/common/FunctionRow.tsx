@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
-import { Web3Provider } from "@ethersproject/providers";
-import { Container, Button, Row, Col, InputGroup, FormControl } from "react-bootstrap";
-import { ContractTransaction, ContractFunction } from "@ethersproject/contracts";
+import { Button, Row, Col, InputGroup, FormControl } from "react-bootstrap";
+import { ContractFunction } from "@ethersproject/contracts";
 import { utils, BigNumber } from 'ethers';
 interface Props {
   function: ContractFunction
@@ -10,24 +9,19 @@ interface Props {
 export default function FunctionRow(props: Props) {
   const firstState = props.contractEntry.inputs.map(() => "")
   const [inputs, setInputs] = useState(firstState as Array<string>);
-  console.log("🚀 ~ file: FunctionRow.tsx ~ line 12 ~ FunctionRow ~ inputs", props.contractEntry, inputs)
   const [outputs, setOutputs] = useState([] as string[]);
   const [args, setArgs] = useState([])
   const [override, setOverride] = useState(null);
 
   async function onClick(event): Promise<void> {  
-    console.log("youclicked");
-    console.log(event);
     try {
       const cleanInputs = inputs.map((item, index) => {
-      console.log("🚀 ~ file: FunctionRow.tsx ~ line 21 ~ onClick ~ item", props.contractEntry.name, item)
         if (item === 'true') {
           return true
         }
         if (item === 'false') {
           return false
         }
-        console.log("🚀 ~ file: FunctionRow.tsx ~ line 34 ~ cleanInputs ~ props.contractEntry.inputs", props.contractEntry.inputs)
         if (index > props.contractEntry.inputs.length - 1 && props.contractEntry.inputs[index]?.type === 'uint256') {
           return utils.parseEther(item).toString()
         }
@@ -39,17 +33,13 @@ export default function FunctionRow(props: Props) {
         cleanInputs[lastIndex] = {
           value: utils.parseEther(cleanInputs[lastIndex] as string)
         }
-        console.log("🚀 ~ file: FunctionRow.tsx ~ line 34 ~ onClick ~ cleanInputs[lastIndex]", cleanInputs)
       }
       try {
         const output = await props.function(...cleanInputs);
-        console.log("🚀 ~ file: FunctionRow.tsx ~ line 46 ~ onClick ~ output", output)
         if (Array.isArray(output)) {
-          console.log("🚀 ~ file: FunctionRow.tsx ~ line 20 ~ onClick ~ output", output)
           setOutputs(output.map((item, index) => {
             return props.contractEntry.outputs[index].type === "uint256" ? utils.formatUnits(item.toString(), "ether").toString() : item.toString()
           }));
-          console.log("set outputs with array output");
         } else {
           setOutputs(["success"]) 
         }
