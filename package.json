@@ -31,6 +31,7 @@
     "cross-env": "^7.0.3",
     "cz-conventional-changelog": "^3.3.0",
     "dotenv": "^10.0.0",
+    "envfile": "^6.17.0",
     "eslint": "^7.32.0",
     "eslint-config-prettier": "^8.3.0",
     "ethereum-waffle": "^3.4.0",
@@ -71,8 +72,5 @@
     "prettier:check": "prettier --check --config ./.prettierrc.yaml \"**/*.{js,json,md,sol,ts}\"",
     "test": "hardhat test",
     "typechain": "cross-env TS_NODE_TRANSPILE_ONLY=true hardhat typechain"
-  },
-  "dependencies": {
-    "envfile": "^6.17.0"
   }
 }

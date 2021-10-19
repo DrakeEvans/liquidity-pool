@@ -14,6 +14,10 @@ export default class EnumContracts {
     factory: SpaceCoinIco__factory,
     envKey: "REACT_APP_SPACE_COIN_ICO_ADDRESS",
   };
+  static wrappedEth = {
+    factory: SpaceCoinRouter__factory,
+    envKey: "REACT_APP_WRAPPED_ETH_ADDRESS",
+  };
   static spaceCoinEthPair = {
     factory: SpaceCoinEthPair__factory,
     envKey: "REACT_APP_SPACE_COIN_ETH_PAIR_ADDRESS",

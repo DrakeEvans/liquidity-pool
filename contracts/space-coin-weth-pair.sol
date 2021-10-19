@@ -7,22 +7,14 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
 import "hardhat/console.sol";
 import "./space-coin.sol";
+import "./wrapped-eth.sol";
 
 contract SpaceCoinEthPair is Ownable, ERC20, Pausable {
     uint256 public constant MINIMUM_LIQUIDITY = 10;
     address public spaceCoinAddress;
+    address public wethAddress;
     uint256 public spaceCoinReserves;
-    uint256 public ethReserves;
-    uint256 public ethPriceLast;
-    uint256 public spaceCoinPriceLast;
-    uint256 public kLast;
-    uint256 public feePercent;
-    mapping(address => bool) public routerAddresses;
-
-    modifier onlyRouters() {
-        require(routerAddresses[msg.sender], "ACCESS_DENIED_ROUTER_ONLY");
-        _;
-    }
+    uint256 public wethReserves;
 
     modifier onlySpaceCoin() {
         require(msg.sender == spaceCoinAddress, "ACCESS_DENIED_SPC_ONLY");
@@ -38,31 +30,31 @@ contract SpaceCoinEthPair is Ownable, ERC20, Pausable {
         spaceCoinAddress = _address;
     }
 
-    function setRouterAddresses(address _address, bool _bool) external onlyOwner {
-        routerAddresses[_address] = _bool;
+    function setWethAddress(address _address) external onlyOwner {
+        wethAddress = _address;
     }
 
     function updateReserves() private {
-        spaceCoinReserves = IERC20(spaceCoinAddress).balanceOf(address(this));
+        spaceCoinReserves = SpaceCoin(spaceCoinAddress).balanceOf(address(this));
         // How to check if this has failed maybe val > 0
-        ethReserves = address(this).balance;
+        wethReserves = WrappedEth(wethAddress).balanceOf(address(this));
     }
 
     // Only called by router
     // Only called right after the transfer of spaceCoin
     function mint(address _to) external whenNotPaused returns (uint256 liquidity) {
-        uint256 spaceCoinBalance = IERC20(spaceCoinAddress).balanceOf(address(this));
-        uint256 ethBalance = address(this).balance;
+        uint256 spaceCoinBalance = SpaceCoin(spaceCoinAddress).balanceOf(address(this));
+        uint256 wethBalance = WrappedEth(wethAddress).balanceOf(address(this));
         uint256 amountSpaceCoin = spaceCoinBalance - spaceCoinReserves;
-        uint256 amountEth = ethBalance - ethReserves;
+        uint256 amountWeth = wethBalance - wethReserves;
         uint256 _totalSupply = totalSupply();
         if (_totalSupply == 0) {
-            liquidity = sqrt(amountSpaceCoin * amountEth);
+            liquidity = sqrt(amountSpaceCoin * amountWeth);
         } else {
-            uint256 optimisticAmountEth = (amountEth * totalSupply()) / ethReserves;
+            uint256 optimisticAmountWeth = (amountWeth * totalSupply()) / wethReserves;
             uint256 optimisticAmountSpaceCoin = (amountSpaceCoin * totalSupply()) / spaceCoinReserves;
-            liquidity = optimisticAmountEth < optimisticAmountSpaceCoin
-                ? optimisticAmountEth
+            liquidity = optimisticAmountWeth < optimisticAmountSpaceCoin
+                ? optimisticAmountWeth
                 : optimisticAmountSpaceCoin;
         }
         require(liquidity > 0, "INSUFFICIENT_LIQUIDITY");
@@ -70,35 +62,34 @@ contract SpaceCoinEthPair is Ownable, ERC20, Pausable {
         updateReserves();
     }
 
-    function burn(address _to) external whenNotPaused returns (uint256 amountSpaceCoin, uint256 amountEth) {
+    function burn(address _to) external whenNotPaused returns (uint256 amountSpaceCoin, uint256 amountWeth) {
         uint256 _totalSupply = totalSupply();
         uint256 currentLiquidity = balanceOf(address(this));
         amountSpaceCoin = (currentLiquidity * spaceCoinReserves) / _totalSupply;
-        amountEth = (currentLiquidity * ethReserves) / _totalSupply;
+        amountWeth = (currentLiquidity * wethReserves) / _totalSupply;
         _burn(address(this), currentLiquidity);
         bool sentSPC = SpaceCoin(spaceCoinAddress).transfer(_to, amountSpaceCoin);
         require(sentSPC, "SPC_TRANSFER_FAILED");
-        (bool sent, ) = _to.call{ value: amountEth }("");
-        require(sent, "ETH_TRANSFER_FAILED");
+        bool sentWeth = WrappedEth(wethAddress).transfer(_to, amountSpaceCoin);
+        require(sentWeth, "WETH_TRANSFER_FAILED");
         updateReserves();
     }
 
-    function swap(address _to) external payable returns (uint256 amountSwapped) {
+    function swap(address _to) external whenNotPaused returns (uint256 amountSwapped) {
         uint256 amountSpaceCoin = SpaceCoin(spaceCoinAddress).balanceOf(address(this)) - spaceCoinReserves;
-        uint256 amountEth = address(this).balance - ethReserves;
-        uint256 k = spaceCoinReserves * ethReserves;
-        require(amountSpaceCoin > 0 || amountEth > 0, "No swap available");
+        uint256 amountWeth = WrappedEth(wethAddress).balanceOf(address(this)) - spaceCoinReserves;
+        uint256 k = spaceCoinReserves * wethReserves;
+        require(amountSpaceCoin > 0 || amountWeth > 0, "No swap available");
         if (amountSpaceCoin > 0) {
             uint256 denominator = spaceCoinReserves + amountSpaceCoin;
 
-            uint256 amountEthOut = ethReserves - (k / denominator); // Reversed from the elegant function so that amountEthOut is positive
+            uint256 amountWethOut = wethReserves - (k / denominator); // Reversed from the elegant function so that amountWethOut is positive
 
-            (bool sent, ) = _to.call{ value: amountEthOut }("");
-            amountSwapped = amountEthOut;
-
-            require(sent, "ETH FAILED TO SEND");
-        } else if (amountEth > 0) {
-            uint256 denominator = ethReserves + amountEth;
+            bool sent = WrappedEth(wethAddress).transfer(_to, amountWethOut);
+            amountSwapped = amountWethOut;
+            require(sent, "WETH FAILED TO SEND");
+        } else if (amountWeth > 0) {
+            uint256 denominator = wethReserves + amountWeth;
 
             uint256 amountSpaceCoinOut = spaceCoinReserves - (k / denominator); // Reversed from the elegant function so that amountSpaceCoinOut is positive
 
@@ -153,6 +144,4 @@ contract SpaceCoinEthPair is Ownable, ERC20, Pausable {
         uint256 r1 = x / r;
         return (r < r1 ? r : r1);
     }
-
-    fallback() external payable {}
 }
