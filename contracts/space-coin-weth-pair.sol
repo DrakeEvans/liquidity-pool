@@ -1,28 +1,31 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.4;
+pragma solidity ^0.8.9;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
-import "hardhat/console.sol";
 import "./space-coin.sol";
 import "./wrapped-eth.sol";
 
-contract SpaceCoinEthPair is Ownable, ERC20, Pausable {
-    uint256 public constant MINIMUM_LIQUIDITY = 10;
+contract SpaceCoinWethPair is Ownable, ERC20 {
+    uint256 public feePercent;
     address public spaceCoinAddress;
     address public wethAddress;
     uint256 public spaceCoinReserves;
     uint256 public wethReserves;
+    bool private locked;
 
-    modifier onlySpaceCoin() {
-        require(msg.sender == spaceCoinAddress, "ACCESS_DENIED_SPC_ONLY");
+    // Implementation from UniswapV2
+    modifier lockDuringRun() {
+        require(locked == false, "Re-entrancy guard");
+        locked = true;
         _;
+        locked = false;
     }
 
-    constructor(address _spaceCoinAddress) Ownable() ERC20("Space-ETH", "SPC-ETH") Pausable() {
+    constructor(address _spaceCoinAddress, address _wethAddress) Ownable() ERC20("Space-WrappedEther", "SPC-WETH") {
         spaceCoinAddress = _spaceCoinAddress;
+        wethAddress = _wethAddress;
         feePercent = 1;
     }
 
@@ -34,74 +37,104 @@ contract SpaceCoinEthPair is Ownable, ERC20, Pausable {
         wethAddress = _address;
     }
 
+    function setSwapFeePercent(uint256 _feePercent) external onlyOwner {
+        require(_feePercent < 100, "FEE PERCENT MUST BE LESS THAN 100");
+        feePercent = _feePercent;
+    }
+
+    /// @dev Updates internal reserve accounting to latest information on chain
     function updateReserves() private {
         spaceCoinReserves = SpaceCoin(spaceCoinAddress).balanceOf(address(this));
-        // How to check if this has failed maybe val > 0
         wethReserves = WrappedEth(wethAddress).balanceOf(address(this));
     }
 
-    // Only called by router
-    // Only called right after the transfer of spaceCoin
-    function mint(address _to) external whenNotPaused returns (uint256 liquidity) {
-        uint256 spaceCoinBalance = SpaceCoin(spaceCoinAddress).balanceOf(address(this));
-        uint256 wethBalance = WrappedEth(wethAddress).balanceOf(address(this));
-        uint256 amountSpaceCoin = spaceCoinBalance - spaceCoinReserves;
-        uint256 amountWeth = wethBalance - wethReserves;
+    /// @dev Use contract balances to determine paid amounts, implies that caller will execute inside of a
+    /// transaction that adds balance prior to mint call
+    function mint(address _to) external lockDuringRun returns (uint256 liquidity) {
+        // Scoped variables for gas saving
         uint256 _totalSupply = totalSupply();
+        uint256 _amountSpaceCoinAdded = SpaceCoin(spaceCoinAddress).balanceOf(address(this)) - spaceCoinReserves;
+        uint256 _amountWethAdded = WrappedEth(wethAddress).balanceOf(address(this)) - wethReserves;
+
         if (_totalSupply == 0) {
-            liquidity = sqrt(amountSpaceCoin * amountWeth);
+            // Typically there would be a minimum liquidity here to optimize tick size
+            liquidity = sqrt(_amountSpaceCoinAdded * _amountWethAdded);
         } else {
-            uint256 optimisticAmountWeth = (amountWeth * totalSupply()) / wethReserves;
-            uint256 optimisticAmountSpaceCoin = (amountSpaceCoin * totalSupply()) / spaceCoinReserves;
-            liquidity = optimisticAmountWeth < optimisticAmountSpaceCoin
-                ? optimisticAmountWeth
-                : optimisticAmountSpaceCoin;
+            uint256 _optimisticAmountWeth = (_amountWethAdded * _totalSupply) / wethReserves;
+            uint256 _optimisticAmountSpaceCoin = (_amountSpaceCoinAdded * _totalSupply) / spaceCoinReserves;
+
+            // Implies that mismatching the ratio of assets screws over the new LP
+            liquidity = _optimisticAmountWeth < _optimisticAmountSpaceCoin
+                ? _optimisticAmountWeth
+                : _optimisticAmountSpaceCoin;
         }
         require(liquidity > 0, "INSUFFICIENT_LIQUIDITY");
         _mint(_to, liquidity);
         updateReserves();
     }
 
-    function burn(address _to) external whenNotPaused returns (uint256 amountSpaceCoin, uint256 amountWeth) {
+    function burn(address _to) external lockDuringRun returns (uint256 _amountSpaceCoin, uint256 _amountWeth) {
+        // scoped vars for gas savings
         uint256 _totalSupply = totalSupply();
-        uint256 currentLiquidity = balanceOf(address(this));
-        amountSpaceCoin = (currentLiquidity * spaceCoinReserves) / _totalSupply;
-        amountWeth = (currentLiquidity * wethReserves) / _totalSupply;
-        _burn(address(this), currentLiquidity);
-        bool sentSPC = SpaceCoin(spaceCoinAddress).transfer(_to, amountSpaceCoin);
-        require(sentSPC, "SPC_TRANSFER_FAILED");
-        bool sentWeth = WrappedEth(wethAddress).transfer(_to, amountSpaceCoin);
+        uint256 _liquidityToBurn = balanceOf(address(this));
+
+        // Determine amount of underlying assets to return for the burned LP tokens
+        _amountSpaceCoin = (_liquidityToBurn * spaceCoinReserves) / _totalSupply;
+        _amountWeth = (_liquidityToBurn * wethReserves) / _totalSupply;
+
+        _burn(address(this), _liquidityToBurn);
+
+        // Transfer assets in return for the burn
+        bool _sentSPC = SpaceCoin(spaceCoinAddress).transfer(_to, _amountSpaceCoin);
+        require(_sentSPC, "SPC_TRANSFER_FAILED");
+
+        bool sentWeth = WrappedEth(wethAddress).transfer(_to, _amountSpaceCoin);
         require(sentWeth, "WETH_TRANSFER_FAILED");
+
+        // Update internal accounting
         updateReserves();
     }
 
-    function swap(address _to) external whenNotPaused returns (uint256 amountSwapped) {
-        uint256 amountSpaceCoin = SpaceCoin(spaceCoinAddress).balanceOf(address(this)) - spaceCoinReserves;
-        uint256 amountWeth = WrappedEth(wethAddress).balanceOf(address(this)) - spaceCoinReserves;
-        uint256 k = spaceCoinReserves * wethReserves;
-        require(amountSpaceCoin > 0 || amountWeth > 0, "No swap available");
-        if (amountSpaceCoin > 0) {
-            uint256 denominator = spaceCoinReserves + amountSpaceCoin;
+    /// @dev Elegant(ish) implementation without fees:
+    ///      (asset1_t0 + asset1_delta) * (asset2_t0 + asset2_delta) = asset1_0 * asset2_0
+    function swap(address _to) external lockDuringRun returns (uint256 _amountSwapped) {
+        // Determine amount added for swap
+        uint256 _amountSpaceCoin = SpaceCoin(spaceCoinAddress).balanceOf(address(this)) - spaceCoinReserves;
+        uint256 _amountWeth = WrappedEth(wethAddress).balanceOf(address(this)) - spaceCoinReserves;
 
-            uint256 amountWethOut = wethReserves - (k / denominator); // Reversed from the elegant function so that amountWethOut is positive
+        // Determine current constant value with fee
+        // This implementation returns all fees to LP token holders implicitly
+        uint256 _k = (spaceCoinReserves * wethReserves * (100 + feePercent)) / 100;
 
-            bool sent = WrappedEth(wethAddress).transfer(_to, amountWethOut);
-            amountSwapped = amountWethOut;
-            require(sent, "WETH FAILED TO SEND");
-        } else if (amountWeth > 0) {
-            uint256 denominator = wethReserves + amountWeth;
+        // Short circuit if no assets for swap
+        require(_amountSpaceCoin > 0 || _amountWeth > 0, "No swap available");
 
-            uint256 amountSpaceCoinOut = spaceCoinReserves - (k / denominator); // Reversed from the elegant function so that amountSpaceCoinOut is positive
+        if (_amountSpaceCoin > 0) {
+            uint256 _denominator = spaceCoinReserves + _amountSpaceCoin;
 
-            bool sent = SpaceCoin(spaceCoinAddress).transfer(_to, amountSpaceCoinOut);
-            amountSwapped = amountSpaceCoinOut;
-            require(sent, "space coin transfer failed");
+            // Reversed from the elegant function so that amountWethOut is positive
+            uint256 _amountWethOut = wethReserves - (_k / _denominator);
+
+            bool _sent = WrappedEth(wethAddress).transfer(_to, _amountWethOut);
+            require(_sent, "WETH FAILED TO SEND");
+
+            _amountSwapped = _amountWethOut;
+        } else if (_amountWeth > 0) {
+            uint256 _denominator = wethReserves + _amountWeth;
+
+            // Reversed from the elegant function so that _amountSpaceCoinOut is positive
+            uint256 _amountSpaceCoinOut = spaceCoinReserves - (_k / _denominator);
+
+            bool _sent = SpaceCoin(spaceCoinAddress).transfer(_to, _amountSpaceCoinOut);
+            require(_sent, "space coin transfer failed");
+
+            _amountSwapped = _amountSpaceCoinOut;
         }
         updateReserves();
     }
 
     // Same implementation as UNISWAP V2
-    function sqrt(uint256 x) public pure returns (uint256) {
+    function sqrt(uint256 x) private pure returns (uint256) {
         if (x == 0) return 0;
         // this block is equivalent to r = uint256(1) << (BitMath.mostSignificantBit(x) / 2);
         // however that code costs significantly more gas

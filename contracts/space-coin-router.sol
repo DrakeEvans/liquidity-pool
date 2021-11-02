@@ -1,113 +1,125 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.4;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Capped.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
-import "hardhat/console.sol";
-import "./space-coin-eth-pair.sol";
+import "./space-coin-weth-pair.sol";
 import "./space-coin.sol";
 
-contract SpaceCoinRouter is Ownable {
-    address payable public spaceCoinEthPairAddress;
-    address payable public spaceCoinAddress;
+contract SpaceCoinRouter {
+    address public spaceCoinWethPairAddress;
+    address public spaceCoinAddress;
+    address public wethAddress;
 
-    modifier notExpired(uint256 deadline) {
-        require(deadline >= block.timestamp, "EXPIRED");
+    modifier notExpired(uint256 _deadline) {
+        require(_deadline >= block.timestamp, "EXPIRED");
         _;
     }
 
-    constructor(address _spaceCoinAddress, address _spaceCoinEthPairAddress) Ownable() {
-        spaceCoinEthPairAddress = payable(_spaceCoinEthPairAddress);
-        spaceCoinAddress = payable(_spaceCoinAddress);
+    constructor(
+        address _spaceCoinAddress,
+        address _spaceCoinEthPairAddress,
+        address _wethAddress
+    ) {
+        spaceCoinAddress = _spaceCoinAddress;
+        spaceCoinWethPairAddress = _spaceCoinEthPairAddress;
+        wethAddress = _wethAddress;
     }
 
     function addLiquidity(
-        uint256 amountDesiredSpaceCoin,
-        uint256 minAmountSpaceCoin,
-        uint256 minAmountEth,
-        address to,
-        uint256 deadline
+        uint256 _amountDesiredSpaceCoin,
+        uint256 _amountDesiredWeth,
+        uint256 _minAmountSpaceCoin,
+        uint256 _minAmountWeth,
+        address _to,
+        uint256 _deadline
     )
         external
-        payable
-        notExpired(deadline)
+        notExpired(_deadline)
         returns (
-            uint256 amountSpaceCoin,
-            uint256 amountEth,
-            uint256 liquidity
+            uint256 _amountSpaceCoin,
+            uint256 _amountWeth,
+            uint256 _liquidity
         )
     {
-        uint256 spaceCoinReserves = SpaceCoinEthPair(spaceCoinEthPairAddress).spaceCoinReserves();
-        uint256 ethReserves = SpaceCoinEthPair(spaceCoinEthPairAddress).ethReserves();
-        uint256 amountDesiredEth = msg.value;
-        if (spaceCoinReserves == 0 && ethReserves == 0) {
-            (amountSpaceCoin, amountEth) = (amountDesiredSpaceCoin, amountDesiredEth);
+        // Grab reserve values
+        uint256 _spaceCoinReserves = SpaceCoinWethPair(spaceCoinWethPairAddress).spaceCoinReserves();
+        uint256 _ethReserves = SpaceCoinWethPair(spaceCoinWethPairAddress).wethReserves();
+
+        // Calculate the optimal ratio to prevent overpaying for liquidity
+        if (_spaceCoinReserves == 0 && _ethReserves == 0) {
+            (_amountSpaceCoin, _amountWeth) = (_amountDesiredSpaceCoin, _amountDesiredWeth);
         } else {
-            uint256 optimalEth = (amountDesiredSpaceCoin * ethReserves) / spaceCoinReserves;
-            if (optimalEth <= amountDesiredEth) {
-                require(optimalEth >= minAmountEth, "Not enough enough eth");
-                (amountSpaceCoin, amountEth) = (amountDesiredSpaceCoin, optimalEth);
+            uint256 _optimalWeth = (_amountDesiredSpaceCoin * _ethReserves) / _spaceCoinReserves;
+            if (_optimalWeth <= _amountDesiredWeth) {
+                require(_optimalWeth >= _minAmountWeth, "addLiquidity: minAmountWeth too large");
+                (_amountSpaceCoin, _amountWeth) = (_amountDesiredSpaceCoin, _optimalWeth);
             } else {
-                uint256 optimalSpaceCoin = (amountDesiredEth * spaceCoinReserves) / ethReserves;
-                assert(optimalSpaceCoin <= amountDesiredSpaceCoin);
-                require(optimalSpaceCoin >= minAmountSpaceCoin, "Not enough space coin");
-                (amountSpaceCoin, amountEth) = (optimalSpaceCoin, amountDesiredEth);
+                uint256 _optimalSpaceCoin = (_amountDesiredWeth * _spaceCoinReserves) / _ethReserves;
+                require(_optimalSpaceCoin >= _minAmountSpaceCoin, "addLiquidity: minAmountSpaceCoin too large");
+                (_amountSpaceCoin, _amountWeth) = (_optimalSpaceCoin, _amountDesiredWeth);
             }
         }
-        bool sentSpc = ERC20(spaceCoinAddress).transferFrom(msg.sender, spaceCoinEthPairAddress, amountSpaceCoin);
-        require(sentSpc, "addLiquidity transfer SPC failed");
-        require(amountEth > 0 && amountEth <= msg.value, "FATAL: incorrect ETH amount");
-        require(amountEth <= address(this).balance, "Not enough eth in contract");
-        (bool sentEth, ) = spaceCoinEthPairAddress.call{ value: amountEth }("");
-        require(sentEth, "addLiquidity transfer ETH failed");
-        liquidity = SpaceCoinEthPair(spaceCoinEthPairAddress).mint(to);
-        uint256 leftover = msg.value - amountEth;
-        if (leftover > 0) {
-            (bool sent, ) = msg.sender.call{ value: leftover }("");
-            require(sent, "cannot send leftover eth");
-        }
+        // Send SpaceCoin
+        bool _sentSpc = SpaceCoin(spaceCoinAddress).transferFrom(
+            msg.sender,
+            spaceCoinWethPairAddress,
+            _amountSpaceCoin
+        );
+        require(_sentSpc, "addLiquidity: transferFrom SPC failed");
+
+        // Send Weth
+        bool _sentWeth = WrappedEth(wethAddress).transferFrom(msg.sender, spaceCoinWethPairAddress, _amountSpaceCoin);
+        require(_sentWeth, "addLiquidity: transferFrom WETH failed");
+
+        // Mint liquidity tokens
+        _liquidity = SpaceCoinWethPair(spaceCoinWethPairAddress).mint(_to);
     }
 
     function removeLiquidity(
-        uint256 liquidity,
-        uint256 minAmountSpaceCoin,
-        uint256 minAmountEth,
-        address to,
-        uint256 deadline
-    ) external payable notExpired(deadline) returns (uint256 amountSpaceCoin, uint256 amountEth) {
-        // send liquidity to spaceCoinEthPair
-        bool sentSpc = SpaceCoinEthPair(spaceCoinEthPairAddress).transferFrom(
+        uint256 _liquidity,
+        uint256 _minAmountSpaceCoin,
+        uint256 _minAmountWeth,
+        address _to,
+        uint256 _deadline
+    ) external notExpired(_deadline) returns (uint256 _amountSpaceCoin, uint256 _amountWeth) {
+        // send liqiuidity tokens _to SpaceCoinWethPair
+        bool _sentSpc = SpaceCoinWethPair(spaceCoinWethPairAddress).transferFrom(
             msg.sender,
-            spaceCoinEthPairAddress,
-            liquidity
+            spaceCoinWethPairAddress,
+            _liquidity
         );
-        require(sentSpc, "SPACE COIN ETH PAIR TRANSFER FAILED to transfer LP tokens from client to pair");
-        (amountSpaceCoin, amountEth) = SpaceCoinEthPair(spaceCoinEthPairAddress).burn(to);
-        require(amountSpaceCoin >= minAmountSpaceCoin, "NOT ENOUGH SPACE COIN for LP tokens");
-        require(amountEth >= minAmountEth, "NOT ENOUGH ETH for LP tokens");
+        require(_sentSpc, "removeLiquidity: transferFrom SPC failed");
+
+        // Burn LP tokens
+        (_amountSpaceCoin, _amountWeth) = SpaceCoinWethPair(spaceCoinWethPairAddress).burn(_to);
+        require(_amountSpaceCoin >= _minAmountSpaceCoin, "removeLiquidity: _minAmountSpaceCoin too large");
+        require(_amountWeth >= _minAmountWeth, "removeLiquidity: _minAmountWeth too large");
     }
 
-    function swapEthForSpaceCoin(uint256 minAmountSpaceCoin, address to)
-        external
-        payable
-        returns (uint256 amountSwapped)
-    {
-        (bool sent, ) = spaceCoinEthPairAddress.call{ value: msg.value }("");
-        require(sent, "Eth transfer to pair failed");
-        amountSwapped = SpaceCoinEthPair(spaceCoinEthPairAddress).swap(to);
-        require(amountSwapped >= minAmountSpaceCoin, "SLIPPAGE TOO HIGH: NOT ENOUGH SPACE COIN");
-    }
-
-    function swapSpaceCoinForEth(
-        uint256 amountSpaceCoin,
-        uint256 minAmountEth,
-        address to
+    function swapWethForSpaceCoin(
+        uint256 _minAmountSpaceCoin,
+        uint256 _amountWeth,
+        address _to
     ) external returns (uint256 amountSwapped) {
-        bool transfer = SpaceCoin(spaceCoinAddress).transferFrom(msg.sender, spaceCoinEthPairAddress, amountSpaceCoin);
-        require(transfer, "space coin transfer failed");
-        amountSwapped = SpaceCoinEthPair(spaceCoinEthPairAddress).swap(to);
-        require(amountSwapped >= minAmountEth, "SLIPPAGE TOO HIGH: NOT ENOUGH ETH");
+        // Send weth from caller
+        bool sentWeth = WrappedEth(wethAddress).transferFrom(msg.sender, spaceCoinWethPairAddress, _amountWeth);
+        require(sentWeth, "swapWethForSpaceCoin: transferFrom WETH failed");
+        // Swap Weth for
+        amountSwapped = SpaceCoinWethPair(spaceCoinWethPairAddress).swap(_to);
+        require(amountSwapped >= _minAmountSpaceCoin, "swapWethForSpaceCoin: minAmountSpaceCoin too large");
+    }
+
+    function swapSpaceCoinForWeth(
+        uint256 _amountSpaceCoin,
+        uint256 _minAmountWeth,
+        address _to
+    ) external returns (uint256 amountSwapped) {
+        bool transfer = SpaceCoin(spaceCoinAddress).transferFrom(
+            msg.sender,
+            spaceCoinWethPairAddress,
+            _amountSpaceCoin
+        );
+        require(transfer, "swapSpaceCoinForWeth: transferFrom SPC failed");
+        amountSwapped = SpaceCoinWethPair(spaceCoinWethPairAddress).swap(_to);
+        require(amountSwapped >= _minAmountWeth, "swapSpaceCoinForWeth: minAmountWeth too large");
     }
 }
