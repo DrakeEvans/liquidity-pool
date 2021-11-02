@@ -67,7 +67,7 @@ contract SpaceCoinRouter {
         require(_sentSpc, "addLiquidity: transferFrom SPC failed");
 
         // Send Weth
-        bool _sentWeth = WrappedEth(wethAddress).transferFrom(msg.sender, spaceCoinWethPairAddress, _amountSpaceCoin);
+        bool _sentWeth = WrappedEth(wethAddress).transferFrom(msg.sender, spaceCoinWethPairAddress, _amountWeth);
         require(_sentWeth, "addLiquidity: transferFrom WETH failed");
 
         // Mint liquidity tokens
