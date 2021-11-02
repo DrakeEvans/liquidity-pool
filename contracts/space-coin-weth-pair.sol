@@ -100,7 +100,7 @@ contract SpaceCoinWethPair is Ownable, ERC20 {
     function swap(address _to) external lockDuringRun returns (uint256 _amountSwapped) {
         // Determine amount added for swap
         uint256 _amountSpaceCoin = SpaceCoin(spaceCoinAddress).balanceOf(address(this)) - spaceCoinReserves;
-        uint256 _amountWeth = WrappedEth(wethAddress).balanceOf(address(this)) - spaceCoinReserves;
+        uint256 _amountWeth = WrappedEth(wethAddress).balanceOf(address(this)) - wethReserves;
 
         // Determine current constant value with fee
         // This implementation returns all fees to LP token holders implicitly
@@ -134,7 +134,7 @@ contract SpaceCoinWethPair is Ownable, ERC20 {
     }
 
     // Same implementation as UNISWAP V2
-    function sqrt(uint256 x) private pure returns (uint256) {
+    function sqrt(uint256 x) public pure returns (uint256) {
         if (x == 0) return 0;
         // this block is equivalent to r = uint256(1) << (BitMath.mostSignificantBit(x) / 2);
         // however that code costs significantly more gas

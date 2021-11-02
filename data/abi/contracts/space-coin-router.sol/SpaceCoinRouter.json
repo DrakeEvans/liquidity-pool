@@ -10,55 +10,46 @@
         "internalType": "address",
         "name": "_spaceCoinEthPairAddress",
         "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_wethAddress",
+        "type": "address"
       }
     ],
     "stateMutability": "nonpayable",
     "type": "constructor"
   },
   {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "previousOwner",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "newOwner",
-        "type": "address"
-      }
-    ],
-    "name": "OwnershipTransferred",
-    "type": "event"
-  },
-  {
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "amountDesiredSpaceCoin",
+        "name": "_amountDesiredSpaceCoin",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "minAmountSpaceCoin",
+        "name": "_amountDesiredWeth",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "minAmountEth",
+        "name": "_minAmountSpaceCoin",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_minAmountWeth",
         "type": "uint256"
       },
       {
         "internalType": "address",
-        "name": "to",
+        "name": "_to",
         "type": "address"
       },
       {
         "internalType": "uint256",
-        "name": "deadline",
+        "name": "_deadline",
         "type": "uint256"
       }
     ],
@@ -66,61 +57,48 @@
     "outputs": [
       {
         "internalType": "uint256",
-        "name": "amountSpaceCoin",
+        "name": "_amountSpaceCoin",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "amountEth",
+        "name": "_amountWeth",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "liquidity",
+        "name": "_liquidity",
         "type": "uint256"
       }
     ],
-    "stateMutability": "payable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "owner",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "liquidity",
+        "name": "_liquidity",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "minAmountSpaceCoin",
+        "name": "_minAmountSpaceCoin",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "minAmountEth",
+        "name": "_minAmountWeth",
         "type": "uint256"
       },
       {
         "internalType": "address",
-        "name": "to",
+        "name": "_to",
         "type": "address"
       },
       {
         "internalType": "uint256",
-        "name": "deadline",
+        "name": "_deadline",
         "type": "uint256"
       }
     ],
@@ -128,22 +106,15 @@
     "outputs": [
       {
         "internalType": "uint256",
-        "name": "amountSpaceCoin",
+        "name": "_amountSpaceCoin",
         "type": "uint256"
       },
       {
         "internalType": "uint256",
-        "name": "amountEth",
+        "name": "_amountWeth",
         "type": "uint256"
       }
     ],
-    "stateMutability": "payable",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "renounceOwnership",
-    "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
   },
@@ -152,7 +123,7 @@
     "name": "spaceCoinAddress",
     "outputs": [
       {
-        "internalType": "address payable",
+        "internalType": "address",
         "name": "",
         "type": "address"
       }
@@ -162,10 +133,10 @@
   },
   {
     "inputs": [],
-    "name": "spaceCoinEthPairAddress",
+    "name": "spaceCoinWethPairAddress",
     "outputs": [
       {
-        "internalType": "address payable",
+        "internalType": "address",
         "name": "",
         "type": "address"
       }
@@ -177,45 +148,21 @@
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "minAmountSpaceCoin",
+        "name": "_amountSpaceCoin",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_minAmountWeth",
         "type": "uint256"
       },
       {
         "internalType": "address",
-        "name": "to",
+        "name": "_to",
         "type": "address"
       }
     ],
-    "name": "swapEthForSpaceCoin",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "amountSwapped",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "payable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "amountSpaceCoin",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "minAmountEth",
-        "type": "uint256"
-      },
-      {
-        "internalType": "address",
-        "name": "to",
-        "type": "address"
-      }
-    ],
-    "name": "swapSpaceCoinForEth",
+    "name": "swapSpaceCoinForWeth",
     "outputs": [
       {
         "internalType": "uint256",
@@ -229,14 +176,43 @@
   {
     "inputs": [
       {
+        "internalType": "uint256",
+        "name": "_minAmountSpaceCoin",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_amountWeth",
+        "type": "uint256"
+      },
+      {
         "internalType": "address",
-        "name": "newOwner",
+        "name": "_to",
         "type": "address"
       }
     ],
-    "name": "transferOwnership",
-    "outputs": [],
+    "name": "swapWethForSpaceCoin",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "amountSwapped",
+        "type": "uint256"
+      }
+    ],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "wethAddress",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   }
 ]
