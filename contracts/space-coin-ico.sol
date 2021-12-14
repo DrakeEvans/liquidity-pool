@@ -61,8 +61,8 @@ contract SpaceCoinIco is Ownable {
         }
         if (currentPhase == CurrentPhase.Open) {
             _purchase();
-            bool sent = SpaceCoin(spaceCoinAddress).transfer(msg.sender, 5 * msg.value);
-            require(sent, "Unable to make transfer");
+            bool _sent = SpaceCoin(spaceCoinAddress).transfer(msg.sender, 5 * msg.value);
+            require(_sent, "Unable to make transfer");
         }
     }
 

@@ -23,11 +23,11 @@ contract SpaceCoin is Ownable, ERC20, ERC20Capped, ERC20Pausable {
     }
 
     function _beforeTokenTransfer(
-        address from,
-        address to,
-        uint256 amount
+        address _from,
+        address _to,
+        uint256 _amount
     ) internal virtual override(ERC20, ERC20Pausable) {
-        super._beforeTokenTransfer(from, to, amount);
+        super._beforeTokenTransfer(_from, _to, _amount);
     }
 
     function startReinvestment() public onlyOwner {
@@ -42,9 +42,9 @@ contract SpaceCoin is Ownable, ERC20, ERC20Capped, ERC20Pausable {
 
     function transfer(address _account, uint256 _amount) public override returns (bool) {
         if (reinvestmentTax) {
-            uint256 tax = _amount / 50;
-            super.transfer(treasuryAddress, tax);
-            return super.transfer(_account, _amount - tax);
+            uint256 _tax = _amount / 50;
+            super.transfer(treasuryAddress, _tax);
+            return super.transfer(_account, _amount - _tax);
         } else {
             return super.transfer(_account, _amount);
         }
@@ -56,10 +56,10 @@ contract SpaceCoin is Ownable, ERC20, ERC20Capped, ERC20Pausable {
         uint256 _amount
     ) public override returns (bool) {
         if (reinvestmentTax) {
-            uint256 tax = _amount / 50;
-            bool sent = super.transferFrom(_sender, treasuryAddress, tax);
-            require(sent, "Unable to transfer to treasury");
-            return super.transferFrom(_sender, _recipient, _amount - tax);
+            uint256 _tax = _amount / 50;
+            bool _sent = super.transferFrom(_sender, treasuryAddress, _tax);
+            require(_sent, "Unable to transfer to treasury");
+            return super.transferFrom(_sender, _recipient, _amount - _tax);
         } else {
             return super.transferFrom(_sender, _recipient, _amount);
         }
